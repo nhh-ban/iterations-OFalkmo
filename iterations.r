@@ -50,20 +50,37 @@ test_stations_metadata(stations_metadata_df)
 
 source("gql-queries/vol_qry.r")
 
-stations_metadata_df %>% 
-  filter(latestData > Sys.Date() - days(7)) %>% 
-  sample_n(1) %$% 
-  vol_qry(
-    id = id,
-    from = to_iso8601(latestData, -4),
-    to = to_iso8601(latestData, 0)
-  ) %>% 
-  GQL(., .url = configs$vegvesen_url) %>%
-  transform_volumes() %>% 
-  ggplot(aes(x=from, y=volume)) + 
-  geom_line() + 
-  theme_classic()
+sampled_data <- stations_metadata_df %>%
+  filter(latestData > Sys.Date() - days(7)) %>%
+  sample_n(1) %$%
+  {  
+    id_sample <- .
+    vol_data <- vol_qry(
+      id = id_sample$id, 
+      from = to_iso8601(id_sample$latestData, -4),
+      to = to_iso8601(id_sample$latestData, 0)
+    ) %>%
+      GQL(., .url = configs$vegvesen_url) %>%
+      transform_volumes()
+    return(list(id_sample, vol_data))
+  }
 
+# Extract the id and volume data
+id_sample <- sampled_data[[1]]
+vol_data <- sampled_data[[2]]
 
-
-
+# Create the plot with the id in the legend
+ggplot(vol_data, aes(x = from, y = volume, color = as.factor(id_sample$name))) +
+  geom_line() +
+  theme_classic() +
+  xlab("Date and time of observation") +
+  ylab("Number of vehicles an hour") +
+  scale_x_datetime(
+    date_breaks = "1 day", 
+    date_labels = "%Y-%m-%d %H:00"
+  ) +
+  scale_color_manual(
+    name = "Name of station",
+    values = c("black"),
+    labels = id_sample$name 
+  )
